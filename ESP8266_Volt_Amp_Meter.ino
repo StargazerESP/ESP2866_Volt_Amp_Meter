@@ -3,7 +3,7 @@
 #include <ESP8266WiFi.h> // Wifi connection
 
 #include "Adafruit_ADS1015.h"// 16Bit I2C ADC+PGA ASD1115
-#include "stargazerESP_wifi.h" //My Wifi SSID and password
+#include "local_config.h" //My Wifi SSID, password, and MQTT Server IP
 
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
@@ -20,6 +20,7 @@ String device_plate = "Volt amp Sensor Ver 0.2";
 // Network Values
 byte wifi_mac[6];
 String wifi_mac_str;
+String wifi_mac_str_h; //Human Readable
 IPAddress ip; 
 String ip_str;
 String ssid;
@@ -49,7 +50,7 @@ WiFiClient espClient;
 
 //MQTT Values
 PubSubClient client(espClient);
-const char* mqtt_server = "10.100.100.254";
+const char* mqtt_server = MQTT_SERVER; // - MQTT_SERVER stored in local_config.h
 
 
 
@@ -90,13 +91,14 @@ void wifi_setup(void)
     String wifi_mac_byte_3 = String(wifi_mac[2],HEX);
     String wifi_mac_byte_4 = String(wifi_mac[1],HEX);
     String wifi_mac_byte_5 = String(wifi_mac[0],HEX);
-    wifi_mac_str = wifi_mac_byte_1 + ":" + wifi_mac_byte_2 + ":" + wifi_mac_byte_3 + ":" + wifi_mac_byte_4 + ":" + wifi_mac_byte_5;
+    wifi_mac_str = wifi_mac_byte_1 + wifi_mac_byte_2 + wifi_mac_byte_3 + wifi_mac_byte_4 + wifi_mac_byte_5;
+    wifi_mac_str_h = wifi_mac_byte_1 + ":" + wifi_mac_byte_2 + ":" + wifi_mac_byte_3 + ":" + wifi_mac_byte_4 + ":" + wifi_mac_byte_5;
 
     
     Serial.println();
     Serial.println("WiFi connected");
     Serial.print("IP address: "); Serial.println(WiFi.localIP());
-    Serial.print("Mac address: "); Serial.println(wifi_mac_str);
+    Serial.print("Mac address: "); Serial.println(wifi_mac_str_h);
     Heltec.display->drawString(0, 9, "Wifi Connected");
     Heltec.display->display();
     delay(1000);
@@ -380,6 +382,12 @@ void post_to_mqtt(int dev_id, float volts, float amps, float watts){
   String mqtt_amps;
   String mqtt_watts;
   String mqtt_json_output;
+  String mqtt_path = MQTT_BASE_PATH;  // Found in local_config.h
+  mqtt_path += "Multimeter/";
+  mqtt_path += wifi_mac_str_h;
+  mqtt_path += "/";  
+  mqtt_path += dev_id;
+
   // Connect to MQTT server
   if (!client.connected()) {
     reconnect();
@@ -390,12 +398,9 @@ void post_to_mqtt(int dev_id, float volts, float amps, float watts){
   mqtt_volts = dtostrf(volts,4,2, con_buffer);
   mqtt_amps = 0.00;//dtostrf(amps,7,2, con_buffer);
   mqtt_watts = 0.00; //dtostrf(watts,9,1, con_buffer);
-  mqtt_json["mac"] = wifi_mac_str;
-  mqtt_json["sensor_type"] = "Multimeter";
-  mqtt_json["sensor_id"] = dev_id;
   mqtt_json["data"]["volts"] = mqtt_volts;
-  //mqtt_json["data"]["amps"] = mqtt_amps;
-  //mqtt_json["data"]["watts"] = mqtt_watts;
+  mqtt_json["data"]["amps"] = mqtt_amps;
+  mqtt_json["data"]["watts"] = mqtt_watts;
 
   serializeJson(mqtt_json, mqtt_json_output);
     
@@ -404,16 +409,8 @@ void post_to_mqtt(int dev_id, float volts, float amps, float watts){
   Serial.println(mqtt_json_output);
   Serial.println();
   
-  client.publish("StargazerESP/Sensor", mqtt_json_output.c_str());  
+  client.publish(mqtt_path.c_str(), mqtt_json_output.c_str());  
 }
-
-
-
- 
- 
-
-
-
 
 void setup(){
   Serial.begin(115200);
